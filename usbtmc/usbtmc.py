@@ -281,6 +281,7 @@ class Instrument(object):
 
         self.rigol_quirk = False
         self.rigol_quirk_ieee_block = False
+        self.rigol_quirk_dg800 = False
 
         resource = None
 
@@ -485,6 +486,10 @@ class Instrument(object):
             if self.device.idProduct == 0x04ce:
                 self.rigol_quirk_ieee_block = True
 
+        #Quirk for Rigol DG800 DG900 generators
+        if self.device.idVendor == 0x1ab1 and self.device.idProduct == 0x0643:
+            self.rigol_quirk_dg800 = True
+
         self.connected = True
 
         self.clear()
@@ -659,6 +664,7 @@ class Instrument(object):
             term_char = self.term_char
 
         read_data = b''
+        first_packet = True
 
         try:
             while not eom:
@@ -679,6 +685,8 @@ class Instrument(object):
 
                 if self.rigol_quirk and read_data:
                     pass # do nothing, the packet has no header if it isn't the first
+                elif self.rigol_quirk_dg800 and not first_packet:
+                    pass # can't rely on data length check for Rigol DG800 DG900
                 else:
                     msgid, btag, btaginverse, transfer_size, transfer_attributes, data = self.unpack_dev_dep_resp_header(resp) 
 
@@ -703,6 +711,19 @@ class Instrument(object):
                         eom = True
                     else:
                         eom = False
+
+                elif self.rigol_quirk_dg800:
+                    if first_packet:
+                        read_data += data
+                        first_packet = False
+                    else:
+                        read_data += resp
+                    if len(read_data) >= transfer_size:
+                        read_data = read_data[:transfer_size]  # as per usbtmc spec section 3.2 note 2
+                        eom = True
+                    else:
+                        eom = False
+
                 else:
                     eom = transfer_attributes & 1
                     read_data += data
