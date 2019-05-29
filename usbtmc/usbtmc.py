@@ -664,7 +664,7 @@ class Instrument(object):
             term_char = self.term_char
 
         read_data = b''
-        first_packet = True
+        dg800_header = True 
 
         try:
             while not eom:
@@ -685,7 +685,7 @@ class Instrument(object):
 
                 if self.rigol_quirk and read_data:
                     pass # do nothing, the packet has no header if it isn't the first
-                elif self.rigol_quirk_dg800 and not first_packet:
+                elif self.rigol_quirk_dg800 and not dg800_header:
                     pass # can't rely on data length check for Rigol DG800 DG900
                 else:
                     msgid, btag, btaginverse, transfer_size, transfer_attributes, data = self.unpack_dev_dep_resp_header(resp) 
@@ -713,17 +713,19 @@ class Instrument(object):
                         eom = False
 
                 elif self.rigol_quirk_dg800:
-                    if first_packet:
+                    if dg800_header:
                         read_data += data
-                        first_packet = False
+                        dg800_header = False
                     else:
-                        read_data += resp
-                    if len(read_data) >= transfer_size:
-                        read_data = read_data[:transfer_size]  # as per usbtmc spec section 3.2 note 2
-                        eom = True
-                    else:
-                        eom = False
-
+                        if(transfer_attributes & 1): # EOM 
+                            if len(resp) >= transfer_size:
+                                resp = resp[:transfer_size]  # as per usbtmc spec section 3.2 note 2
+                            read_data += resp
+                            eom = True
+                        else: # not EOM
+                            read_data += resp
+                            eom = False
+                            dg800_header = True
                 else:
                     eom = transfer_attributes & 1
                     read_data += data
